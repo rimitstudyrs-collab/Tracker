@@ -1,0 +1,6 @@
+{
+  "name": "HSC & Admission Tracker",
+  "description": "Comprehensive syllabus and preparation tracker for HSC, Varsity A, B, C, D Units, Engineering, and Medical admission with full task breakdown, resource links, and progress meters.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
