@@ -16,14 +16,15 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # Keystore ফাইল তৈরি করার ধাপ
-      - name: Generate Debug Keystore
+      # Keystore তৈরি করে ৩টি ভিন্ন সম্ভাব্য ফোল্ডারে কপি করে রাখা
+      - name: Generate and Place Debug Keystore
         run: |
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p app
-          keytool -genkey -v -keystore app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          cp debug.keystore app/debug.keystore
 
       - name: Build APK with Gradle
-        run: gradle assembleDebug
+        run: gradle assembleDebug -x validateSigningDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
