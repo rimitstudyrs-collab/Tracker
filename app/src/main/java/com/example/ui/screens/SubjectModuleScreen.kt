@@ -242,13 +242,22 @@ fun SubjectModuleScreen(
         }
 
         // Subjects List (Cards with accordions)
-        itemsIndexed(currentModule.subjects) { subjectIdx, subject ->
-            val isSubjectExpanded = expandedSubjects.contains(subject.name)
-            val subjectProgress = viewModel.getSubjectProgress(subject)
-            val subjectArrowAngle by animateFloatAsState(
-                targetValue = if (isSubjectExpanded) 180f else 0f,
-                label = "subjectArrow"
-            )
+        itemsIndexed(
+    items = currentModule.subjects,
+    key = { _, subject -> subject.name } // Instant scrolling and click response
+) { subjectIdx, subject ->
+    val isSubjectExpanded = expandedSubjects.contains(subject.name)
+    
+    // 🔥 Heavy progress calculation cached on click
+    val subjectProgress = remember(progressMap, subject) {
+        viewModel.getSubjectProgress(subject)
+    }
+
+    val subjectArrowAngle by animateFloatAsState(
+        targetValue = if (isSubjectExpanded) 180f else 0f,
+        label = "subjectArrow"
+    )
+
 
             Card(
                 modifier = Modifier
