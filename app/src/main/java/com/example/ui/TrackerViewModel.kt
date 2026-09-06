@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
-import com.example.data.TaskProgressEntity
 import com.example.data.TrackerRepository
 import com.example.data.UserLicenseEntity
 import com.example.model.Chapter
@@ -12,11 +11,10 @@ import com.example.model.ModuleSection
 import com.example.model.PrepTrack
 import com.example.model.Subject
 import com.example.model.SyllabusData
-import com.example.model.TaskSets
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -98,6 +96,20 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     // Syllabus customization version tracker
     private val _syllabusVersion = MutableStateFlow(0L)
     val syllabusVersion: StateFlow<Long> = _syllabusVersion.asStateFlow()
+
+    // Cached Modules StateFlow for Zero-Lag UI Rendering
+    val currentModules: StateFlow<List<ModuleSection>> = combine(
+        selectedTrack,
+        syllabusVersion
+    ) { track, _ ->
+        withContext(Dispatchers.IO) {
+            val baseModules = SyllabusData.getModulesForTrack(track)
+            baseModules.map { module ->
+                val subjects = repository.getSubjects(track.id, module.id, module.subjects)
+                module.copy(subjects = subjects)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Progress state keyed by: "${trackId}|${subjectName}|${chapterIndex}|${taskId}"
     val progressMap: StateFlow<Map<String, Boolean>> = selectedTrack.flatMapLatest { track ->
@@ -199,7 +211,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     fun switchTrack(track: PrepTrack) {
         val allowed = getAllowedTracks()
-        if (!allowed.contains(track)) return // Prevent switching to unassigned track
+        if (!allowed.contains(track)) return
         _selectedTrack.value = track
         _currentView.value = "home"
         _expandedSubjects.value = emptySet()
@@ -207,9 +219,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun switchView(view: String) {
-        viewModelScope.launch(Dispatchers.Default) {
-            _currentView.value = view
-        }
+        _currentView.value = view
     }
 
     fun toggleSubjectExpanded(subjectName: String) {
@@ -277,10 +287,12 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun getModulesForTrack(track: PrepTrack): List<ModuleSection> {
-        val baseModules = SyllabusData.getModulesForTrack(track)
-        return baseModules.map { module ->
-            val subjects = repository.getSubjects(track.id, module.id, module.subjects)
-            module.copy(subjects = subjects)
+        return currentModules.value.ifEmpty {
+            val baseModules = SyllabusData.getModulesForTrack(track)
+            baseModules.map { module ->
+                val subjects = repository.getSubjects(track.id, module.id, module.subjects)
+                module.copy(subjects = subjects)
+            }
         }
     }
 
@@ -436,13 +448,27 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Auth & Admin Operations ---
     fun login(email: String, code: String) {
+        val cleanEmail = email.trim().lowercase(Locale.ROOT)
+        val cleanCode = code.trim().uppercase(Locale.ROOT)
+
+        if (cleanEmail.isBlank() || cleanCode.isBlank()) {
+            _authError.value = "⚠️ জিমেইল এবং এক্সেস কোড দুটোই পূরণ করুন!"
+            return
+        }
+
+        if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
+            _authError.value = "⚠️ সঠিক জিমেইল অ্যাড্রেস প্রদান করুন!"
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
-            val result = repository.loginWithCredentials(email, code)
+            val result = repository.loginWithCredentials(cleanEmail, cleanCode)
             if (result.isSuccess) {
                 _authError.value = null
                 _showAuthScreen.value = false
             } else {
-                _authError.value = result.exceptionOrNull()?.message ?: "Login failed. Check your details."
+                _authError.value = result.exceptionOrNull()?.message 
+                    ?: "❌ ভুল অ্যাক্সেস কোড বা জিমেইল! সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।"
             }
         }
     }
@@ -471,7 +497,6 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun verifyAdminPasscode(passcode: String): Boolean {
-        // Only "@RIMITSTUDY123@" is accepted as admin passcode
         val isValid = passcode.trim() == "@RIMITSTUDY123@"
         _isAdminUnlocked.value = isValid
         if (!isValid) {
