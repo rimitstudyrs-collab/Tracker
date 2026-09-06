@@ -78,7 +78,6 @@ import com.example.ui.components.ProgressBar
 import com.example.ui.components.TopicAndTasksEditorDialog
 import com.example.ui.components.launchUrl
 import com.example.ui.theme.PremiumGold
-import com.example.ui.theme.PremiumGoldMuted
 
 @Composable
 fun SubjectModuleScreen(
@@ -91,10 +90,13 @@ fun SubjectModuleScreen(
     val liveModules = viewModel.getModulesForTrack(viewModel.selectedTrack.value)
     val currentModule = liveModules.find { it.id == module.id } ?: module
 
-    val moduleProgress = viewModel.getModuleProgress(currentModule)
     val expandedSubjects = viewModel.expandedSubjects.value
     val expandedChapters = viewModel.expandedChapters.value
     val progressMap = viewModel.progressMap.value
+
+    val moduleProgress = remember(progressMap, currentModule) {
+        viewModel.getModuleProgress(currentModule)
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var subjectForAdd by remember { mutableStateOf<Subject?>(null) }
@@ -243,21 +245,20 @@ fun SubjectModuleScreen(
 
         // Subjects List (Cards with accordions)
         itemsIndexed(
-    items = currentModule.subjects,
-    key = { _, subject -> subject.name } // Instant scrolling and click response
-) { subjectIdx, subject ->
-    val isSubjectExpanded = expandedSubjects.contains(subject.name)
-    
-    // 🔥 Heavy progress calculation cached on click
-    val subjectProgress = remember(progressMap, subject) {
-        viewModel.getSubjectProgress(subject)
-    }
+            items = currentModule.subjects,
+            key = { _, subject -> subject.name }
+        ) { subjectIdx, subject ->
+            val isSubjectExpanded = expandedSubjects.contains(subject.name)
+            
+            // Cache performance calculation
+            val subjectProgress = remember(progressMap, subject) {
+                viewModel.getSubjectProgress(subject)
+            }
 
-    val subjectArrowAngle by animateFloatAsState(
-        targetValue = if (isSubjectExpanded) 180f else 0f,
-        label = "subjectArrow"
-    )
-
+            val subjectArrowAngle by animateFloatAsState(
+                targetValue = if (isSubjectExpanded) 180f else 0f,
+                label = "subjectArrow"
+            )
 
             Card(
                 modifier = Modifier
@@ -272,7 +273,6 @@ fun SubjectModuleScreen(
                 )
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Subject Summary Header (Click to toggle)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -369,7 +369,6 @@ fun SubjectModuleScreen(
                         }
                     }
 
-                    // Progress bar always visible on subject card
                     ProgressBar(
                         progressPercent = subjectProgress,
                         height = 5,
@@ -382,7 +381,6 @@ fun SubjectModuleScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                     )
 
-                    // Expandable Chapters Content
                     AnimatedVisibility(
                         visible = isSubjectExpanded,
                         enter = fadeIn() + expandVertically(),
@@ -417,7 +415,6 @@ fun SubjectModuleScreen(
                                 )
                             }
 
-                            // Subject Chapter Management Action Row
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -480,7 +477,6 @@ fun SubjectModuleScreen(
             }
         }
 
-        // Add Subject to Module Action Section
         item {
             Card(
                 modifier = Modifier
@@ -552,7 +548,7 @@ fun SubjectModuleScreen(
         }
     }
 
-    // 1. Add Chapter / Topic Dialog
+    // Dialogs code remains unchanged
     if (showAddDialog && subjectForAdd != null) {
         val sub = subjectForAdd!!
         val defaultType = sub.chapters.firstOrNull()?.taskType ?: TaskSetType.STANDARD
@@ -578,7 +574,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 2. Edit Chapter / Topic Dialog
     if (showEditDialog && subjectForEdit != null) {
         val sub = subjectForEdit!!
         val existingChapter = sub.chapters.getOrNull(chapterIndexForEdit)
@@ -607,7 +602,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 3. Delete Chapter Dialog
     if (showDeleteDialog && subjectForDelete != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -649,7 +643,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 4. Restore Default Syllabus Dialog
     if (showRestoreDialog && subjectForRestore != null) {
         AlertDialog(
             onDismissRequest = { showRestoreDialog = false },
@@ -691,7 +684,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 5. Add Subject Dialog
     if (showAddSubjectDialog) {
         val emojiList = listOf("📚", "🔬", "🌍", "🇧🇩", "📐", "🧪", "💡", "📝", "🏥", "💻")
         AlertDialog(
@@ -813,7 +805,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 6. Edit Subject Dialog
     if (showEditSubjectDialog && subjectIndexForEdit >= 0) {
         val emojiList = listOf("📚", "🔬", "🌍", "🇧🇩", "📐", "🧪", "💡", "📝", "🏥", "💻")
         AlertDialog(
@@ -928,7 +919,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 7. Delete Subject Dialog
     if (showDeleteSubjectDialog && subjectIndexForDelete >= 0) {
         AlertDialog(
             onDismissRequest = { showDeleteSubjectDialog = false },
@@ -969,7 +959,6 @@ fun SubjectModuleScreen(
         )
     }
 
-    // 8. Restore Module Subjects Dialog
     if (showRestoreSubjectsDialog) {
         AlertDialog(
             onDismissRequest = { showRestoreSubjectsDialog = false },
@@ -1021,10 +1010,14 @@ fun ChapterAccordionItem(
 ) {
     val context = LocalContext.current
     val chapterKey = "${subject.name}_$chapterIdx"
-    val chapterProgress = viewModel.getChapterProgress(subject, chapterIdx)
     val tasks = chapter.getEffectiveTasks()
     val trackId = viewModel.selectedTrack.value.id
     val progressMap = viewModel.progressMap.value
+
+    // Cache chapter progress computation per item
+    val chapterProgress = remember(progressMap, subject, chapterIdx) {
+        viewModel.getChapterProgress(subject, chapterIdx)
+    }
 
     val arrowAngle by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
@@ -1043,7 +1036,6 @@ fun ChapterAccordionItem(
         )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Chapter Summary Row (Click to toggle)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1126,7 +1118,6 @@ fun ChapterAccordionItem(
                 }
             }
 
-            // Expanded Chapter Checklist
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = fadeIn() + expandVertically(),
@@ -1138,7 +1129,6 @@ fun ChapterAccordionItem(
                         .background(MaterialTheme.colorScheme.surface)
                         .padding(12.dp)
                 ) {
-                    // If drive link exists, show drive banner matching web version
                     if (chapter.driveLink.isNotBlank()) {
                         Surface(
                             modifier = Modifier
@@ -1183,7 +1173,6 @@ fun ChapterAccordionItem(
                         }
                     }
 
-                    // Task Checklist
                     tasks.forEach { task ->
                         val taskKey = "$trackId|${subject.name}|$chapterIdx|${task.id}"
                         val isChecked = progressMap[taskKey] == true
