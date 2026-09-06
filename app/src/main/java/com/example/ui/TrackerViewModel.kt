@@ -15,6 +15,7 @@ import com.example.model.SyllabusData
 import com.example.model.TaskSets
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -106,7 +108,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         // Observe user license to restore track and check demo status
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             userLicense.collect { user ->
                 if (user != null) {
                     if (!user.isActive) {
@@ -158,7 +160,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun startDemoCountdown() {
         demoTimerJob?.cancel()
-        demoTimerJob = viewModelScope.launch {
+        demoTimerJob = viewModelScope.launch(Dispatchers.IO) {
             while (true) {
                 val remainingMs = repository.getDemoRemainingMillis()
                 if (remainingMs <= 0) {
@@ -205,7 +207,9 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun switchView(view: String) {
-        _currentView.value = view
+        viewModelScope.launch(Dispatchers.Default) {
+            _currentView.value = view
+        }
     }
 
     fun toggleSubjectExpanded(subjectName: String) {
@@ -234,7 +238,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
         val trackId = _selectedTrack.value.id
         val key = "$trackId|${subject.name}|$chapterIndex|$taskId"
         val currentStatus = progressMap.value[key] ?: false
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.toggleTask(trackId, subject.name, chapterIndex, taskId, !currentStatus)
         }
     }
@@ -312,8 +316,10 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
                 Chapter("১. প্রথম অধ্যায় / সূচনা ও বেসিক কনসেপ্ট", com.example.model.TaskSetType.STANDARD)
             )
         )
-        repository.addSubject(track.id, moduleId, newSubject, baseModule.subjects)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.addSubject(track.id, moduleId, newSubject, baseModule.subjects)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun editSubjectInModule(
@@ -327,28 +333,34 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
         if (cleanName.isBlank()) return
         val track = _selectedTrack.value
         val baseModule = SyllabusData.getModulesForTrack(track).find { it.id == moduleId } ?: return
-        val currentSubjects = repository.getSubjects(track.id, moduleId, baseModule.subjects)
-        val existing = currentSubjects.getOrNull(subjectIndex) ?: return
-        val updated = existing.copy(
-            name = cleanName,
-            category = if (category.isBlank()) existing.category else category.trim(),
-            iconEmoji = if (iconEmoji.isBlank()) existing.iconEmoji else iconEmoji.trim()
-        )
-        repository.editSubject(track.id, moduleId, subjectIndex, updated, baseModule.subjects)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            val currentSubjects = repository.getSubjects(track.id, moduleId, baseModule.subjects)
+            val existing = currentSubjects.getOrNull(subjectIndex) ?: return@launch
+            val updated = existing.copy(
+                name = cleanName,
+                category = if (category.isBlank()) existing.category else category.trim(),
+                iconEmoji = if (iconEmoji.isBlank()) existing.iconEmoji else iconEmoji.trim()
+            )
+            repository.editSubject(track.id, moduleId, subjectIndex, updated, baseModule.subjects)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun deleteSubjectFromModule(moduleId: String, subjectIndex: Int) {
         val track = _selectedTrack.value
         val baseModule = SyllabusData.getModulesForTrack(track).find { it.id == moduleId } ?: return
-        repository.deleteSubject(track.id, moduleId, subjectIndex, baseModule.subjects)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteSubject(track.id, moduleId, subjectIndex, baseModule.subjects)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun restoreModuleSubjects(moduleId: String) {
         val track = _selectedTrack.value
-        repository.restoreDefaultSubjects(track.id, moduleId)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.restoreDefaultSubjects(track.id, moduleId)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun hasCustomSubjects(moduleId: String): Boolean {
@@ -373,8 +385,10 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
             driveLink = driveLink.trim(),
             customTasks = customTasks
         )
-        repository.addChapter(trackId, subject.name, newChapter, subject.chapters)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.addChapter(trackId, subject.name, newChapter, subject.chapters)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun editChapterInSubject(
@@ -387,26 +401,32 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
         val cleanTitle = title.trim()
         if (cleanTitle.isBlank()) return
         val trackId = _selectedTrack.value.id
-        val existingChapter = subject.chapters.getOrNull(chapterIndex) ?: return
-        val updated = existingChapter.copy(
-            title = cleanTitle,
-            driveLink = driveLink.trim(),
-            customTasks = customTasks
-        )
-        repository.editChapter(trackId, subject.name, chapterIndex, updated, subject.chapters)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            val existingChapter = subject.chapters.getOrNull(chapterIndex) ?: return@launch
+            val updated = existingChapter.copy(
+                title = cleanTitle,
+                driveLink = driveLink.trim(),
+                customTasks = customTasks
+            )
+            repository.editChapter(trackId, subject.name, chapterIndex, updated, subject.chapters)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun deleteChapterFromSubject(subject: Subject, chapterIndex: Int) {
         val trackId = _selectedTrack.value.id
-        repository.deleteChapter(trackId, subject.name, chapterIndex, subject.chapters)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteChapter(trackId, subject.name, chapterIndex, subject.chapters)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun restoreSubjectChapters(subject: Subject) {
         val trackId = _selectedTrack.value.id
-        repository.restoreDefaultChapters(trackId, subject.name)
-        _syllabusVersion.value = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.restoreDefaultChapters(trackId, subject.name)
+            _syllabusVersion.value = System.currentTimeMillis()
+        }
     }
 
     fun hasCustomChapters(subject: Subject): Boolean {
@@ -416,7 +436,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Auth & Admin Operations ---
     fun login(email: String, code: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val result = repository.loginWithCredentials(email, code)
             if (result.isSuccess) {
                 _authError.value = null
@@ -428,7 +448,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun start10MinuteDemo() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val result = repository.startDemoTrial()
             if (result.isSuccess) {
                 _authError.value = null
@@ -467,7 +487,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
             _adminMessage.value = "⚠️ অনুগ্রহ করে শিক্ষার্থীর বৈধ জিমেইল দিন।"
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val code = repository.createOrRenewCode(email, days, trackId)
             _generatedAdminCode.value = code
             val trackSummary = formatTrackSummary(trackId)
@@ -486,7 +506,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     fun revokeClientAccess(email: String) {
         if (email.isBlank()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.revokeAccess(email)
             _adminMessage.value = "🚫 $email এর এক্সেস অবিলম্বে ব্লক করা হয়েছে।"
         }
@@ -494,7 +514,7 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     fun unblockClientAccess(email: String) {
         if (email.isBlank()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.unblockAccess(email)
             _adminMessage.value = "✅ $email এর এক্সেস সফলভাবে আনব্লক করা হয়েছে।"
         }
@@ -502,14 +522,14 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteClientLicense(email: String) {
         if (email.isBlank()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.deleteLicense(email)
             _adminMessage.value = "🗑️ $email এর লাইসেন্স রেকর্ড মুছে ফেলা হয়েছে।"
         }
     }
 
     fun logout() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.logout()
             _showAuthScreen.value = true
         }
